@@ -1,3 +1,4 @@
+from typing import Dict, Any, List, Union
 #! /usr/bin/env python3
 
 """
@@ -32,7 +33,7 @@ __version__ = "0.14.3"
 
 
 class SherlockFuturesSession(FuturesSession):
-    def request(self, method, url, hooks=None, *args, **kwargs):
+    def request(self, method: str, url: str, hooks: Union[None, Dict[str, List[Any]]] = None, *args, **kwargs) -> Any:
         """Request URL.
 
         This extends the FuturesSession request method to calculate a response
@@ -41,60 +42,47 @@ class SherlockFuturesSession(FuturesSession):
         It is taken (almost) directly from the following Stack Overflow answer:
         https://github.com/ross/requests-futures#working-in-the-background
 
-        Keyword Arguments:
-        self                   -- This object.
-        method                 -- String containing method desired for request.
-        url                    -- String containing URL for request.
-        hooks                  -- Dictionary containing hooks to execute after
-                                  request finishes.
-        args                   -- Arguments.
-        kwargs                 -- Keyword arguments.
+        Args:
+        method (str): String containing method desired for request.
+        url (str): String containing URL for request.
+        hooks (dict, optional): Dictionary containing hooks to execute after
+                                  request finishes. Defaults to None.
+        *args: Arguments.
+        **kwargs: Keyword arguments.
 
-        Return Value:
+        Returns:
         Request object.
         """
-        # Record the start time for the request.
         if hooks is None:
             hooks = {}
+        hooks_copy = hooks.copy()  # Create a copy of the hooks parameter
         start = monotonic()
 
-        def response_time(resp, *args, **kwargs):
+        def response_time(resp: Any, *args, **kwargs) -> None:
             """Response Time Hook.
 
-            Keyword Arguments:
-            resp                   -- Response object.
-            args                   -- Arguments.
-            kwargs                 -- Keyword arguments.
+            Args:
+            resp (Any): Response object.
+            *args: Arguments.
+            **kwargs: Keyword arguments.
 
-            Return Value:
-            Nothing.
+            Returns:
+            None.
             """
             resp.elapsed = monotonic() - start
 
-            return
-
-        # Install hook to execute when response completes.
-        # Make sure that the time measurement hook is first, so we will not
-        # track any later hook's execution time.
         try:
-            if isinstance(hooks["response"], list):
-                hooks["response"].insert(0, response_time)
-            elif isinstance(hooks["response"], tuple):
-                # Convert tuple to list and insert time measurement hook first.
-                hooks["response"] = list(hooks["response"])
-                hooks["response"].insert(0, response_time)
-            else:
-                # Must have previously contained a single hook function,
-                # so convert to list.
-                hooks["response"] = [response_time, hooks["response"]]
+            hooks_copy.setdefault("response", []).insert(0, response_time)  # Work with the copy of hooks
         except KeyError:
-            # No response hook was already defined, so install it ourselves.
-            hooks["response"] = [response_time]
+            hooks_copy["response"] = [response_time]
 
-        return super(SherlockFuturesSession, self).request(method,
-                                                           url,
-                                                           hooks=hooks,
-                                                           *args, **kwargs)
+        if method not in ["GET", "POST", "PUT", "DELETE"]:
+            raise ValueError("Invalid method")
+
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise ValueError("Invalid URL")
+
+        return super().request(method, url, hooks=hooks_copy, *args, **kwargs)
 
 
 def get_response(request_future, error_type, social_network):
@@ -110,19 +98,22 @@ def get_response(request_future, error_type, social_network):
             error_context = None
     except requests.exceptions.HTTPError as errh:
         error_context = "HTTP Error"
-        exception_text = str(errh)
+        exception_text = repr(errh)
     except requests.exceptions.ProxyError as errp:
         error_context = "Proxy Error"
-        exception_text = str(errp)
+        exception_text = repr(errp)
     except requests.exceptions.ConnectionError as errc:
         error_context = "Error Connecting"
-        exception_text = str(errc)
+        exception_text = repr(errc)
     except requests.exceptions.Timeout as errt:
         error_context = "Timeout Error"
-        exception_text = str(errt)
+        exception_text = repr(errt)
     except requests.exceptions.RequestException as err:
         error_context = "Unknown Error"
-        exception_text = str(err)
+        exception_text = repr(err)
+    except Exception as e:
+        error_context = "Unknown Error"
+        exception_text = repr(e)
 
     return response, error_context, exception_text
 
